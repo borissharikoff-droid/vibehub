@@ -28,7 +28,7 @@ import {
   applyHookPlan, backupPathFor, hookCommandFor, HOOKABLE_TOOLS, hookStatus, inboxPresence,
   isHookableTool, planHookInstall, planHookUninstall, removeOwnedShims, setConsent,
 } from "./hooks/install";
-import { HIDDEN } from "./projectAlias";
+import { HIDDEN, UNKNOWN_PROJECT_ALIAS } from "./projectAlias";
 import { MAX_EVENT_AGE_MS, safeApiOrigin, safeDeviceToken } from "./privacy";
 import { readStatus, writeOfflineStatus } from "./statusFile";
 import { describeSources, toolLabel } from "./toolLabels";
@@ -80,6 +80,17 @@ function warnIfSourceCheckout(): void {
   if (!entryPath().endsWith(".ts")) return;
   console.log("Note: this is a source checkout, so the entry point is TypeScript, which node cannot run");
   console.log("on its own. Run `npm run build` and re-run this command for an entry that actually starts.");
+}
+
+/**
+ * The way back in after a rejected or revoked token: browser approval, nothing to copy.
+ * The web has no "create a token" step to point at any more (Settings > Tracker offers
+ * Add device, which pairs). Carries --api-url only for a non-default server.
+ */
+function pairCommand(apiUrl: string | undefined): string {
+  const origin = apiUrl ? safeApiOrigin(apiUrl) : null;
+  return origin && origin !== safeApiOrigin(DEFAULT_API_URL)
+    ? `vibehub-tracker pair --api-url ${origin}` : "vibehub-tracker pair";
 }
 
 const program = new Command();
@@ -159,14 +170,14 @@ program
     }
     if (!safeDeviceToken(deviceToken)) {
       console.error("Login failed: the device token is empty or malformed.");
-      console.error("Create a new token in VibeHub > Settings > Tracker and try again.");
+      console.error(`Run \`${pairCommand(options.apiUrl)}\` to connect without a token.`);
       process.exit(1);
     }
 
     const verified = await verifyToken(options.apiUrl, deviceToken);
     if (verified.rejected) {
       console.error(`Login failed: token rejected by the server (${verified.detail}).`);
-      console.error("Create a new token in VibeHub > Settings > Tracker and try again.");
+      console.error(`Run \`${pairCommand(options.apiUrl)}\` to connect without a token.`);
       process.exit(1);
     }
 
@@ -462,7 +473,9 @@ program
       : "no - run `vibehub-tracker autostart enable`"}`);
     console.log(`Status:  ${status.status}`);
     if (status.status === "active") {
-      console.log(`Project: ${status.projectAlias}`);
+      // The neutral default alias means "not shared", not "could not tell which project".
+      console.log(`Project: ${status.projectAlias === UNKNOWN_PROJECT_ALIAS
+        ? "private (name it with `vibehub-tracker set <folder> <name>`)" : status.projectAlias}`);
       console.log(`Tool:    ${status.tool}`);
       console.log(`Model:   ${status.model}`);
       console.log(`Started: ${status.sessionStartedAt}`);
@@ -489,9 +502,10 @@ program
     // receipt is independent of login verification and supported AI activity.
     const freshCheck = Date.parse(status.lastConnectionCheckAt ?? "") >= Date.now() - Math.max(90000, 3 * (config.heartbeatIntervalMs ?? 30000));
     if (status.authRejected) {
+      // First line is parsed by connect.sh/connect.ps1: keep "Connected: no ... token rejected".
       console.log("Connected: no - token rejected by the server.");
-      console.log("  Create a new token in VibeHub > Settings > Tracker, then run:");
-      console.log("  vibehub-tracker login <newToken>");
+      console.log("  This device was disconnected in VibeHub. Connect it again with:");
+      console.log(`  ${pairCommand(config.apiUrl)}`);
     } else if (!running) {
       console.log("Connected: no - daemon isn't running. Run `vibehub-tracker start`.");
     } else if (status.connected && freshCheck) {

@@ -69,7 +69,9 @@ export class PairingStore {
       os === "linux" ? "linux" : "unknown"
     ) as "mac" | "windows" | "linux" | "unknown";
 
-    const cleanDeviceName = (deviceName || "My Device").trim().slice(0, 64) || "My Device";
+    // CLI trackers send os.hostname(): on a Mac that is the Bonjour name, "MacBook-Air.local".
+    // The suffix is network plumbing, not part of the name the person gave the machine.
+    const cleanDeviceName = (deviceName || "").trim().replace(/\.(local|localdomain)$/i, "").slice(0, 64) || "My Device";
     const now = Date.now();
     const expiresAt = now + SESSION_TTL_MS;
 

@@ -24,6 +24,13 @@ eq("lookup deviceName", lookup.deviceName, "My MacBook");
 eq("lookup os", lookup.os, "mac");
 eq("lookup not approved", lookup.alreadyApproved, false);
 
+// A Bonjour hostname drops its network suffix; anything else is kept as sent
+const named = (name: string) => store.getInfo(store.createSession(name, "mac", "https://web.test").userCode).deviceName;
+eq("hostname .local suffix dropped", named("MacBook-Air-Noname.local"), "MacBook-Air-Noname");
+eq("suffix match ignores case", named("studio.LOCAL"), "studio");
+eq("a .local-only name falls back", named(".local"), "My Device");
+eq("an inner .local is kept", named("my.local.box"), "my.local.box");
+
 // Case insensitive lookup
 const lowerLookup = store.getInfo(session.userCode.toLowerCase());
 eq("case insensitive lookup valid", lowerLookup.valid, true);

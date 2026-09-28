@@ -4984,6 +4984,10 @@ function reportAutostart(report) {
 function warnIfSourceCheckout() {
   entryPath().endsWith(".ts") && (console.log("Note: this is a source checkout, so the entry point is TypeScript, which node cannot run"), console.log("on its own. Run `npm run build` and re-run this command for an entry that actually starts."));
 }
+function pairCommand(apiUrl) {
+  let origin = apiUrl ? safeApiOrigin(apiUrl) : null;
+  return origin && origin !== safeApiOrigin(DEFAULT_API_URL) ? `vibehub-tracker pair --api-url ${origin}` : "vibehub-tracker pair";
+}
 var program2 = new Command();
 program2.name("vibehub-tracker").description("VibeHub AI-session metadata tracker");
 async function verifyToken(apiUrl, deviceToken) {
@@ -5017,9 +5021,9 @@ program2.command("login [deviceToken]").description(`validate the token with the
   let deviceToken;
   options.tokenStdin ? (deviceTokenArg && (console.error("Login failed: pass the token either as an argument or on stdin, not both."), process.exit(1)), deviceToken = await readTokenFromStdin().catch((err) => {
     console.error(`Login failed: ${err instanceof Error ? err.message : "could not read stdin"}.`), process.exit(1);
-  })) : deviceTokenArg ? deviceToken = deviceTokenArg : (console.error("Login failed: missing device token. Pass it as an argument or use --token-stdin."), process.exit(1)), safeDeviceToken(deviceToken) || (console.error("Login failed: the device token is empty or malformed."), console.error("Create a new token in VibeHub > Settings > Tracker and try again."), process.exit(1));
+  })) : deviceTokenArg ? deviceToken = deviceTokenArg : (console.error("Login failed: missing device token. Pass it as an argument or use --token-stdin."), process.exit(1)), safeDeviceToken(deviceToken) || (console.error("Login failed: the device token is empty or malformed."), console.error(`Run \`${pairCommand(options.apiUrl)}\` to connect without a token.`), process.exit(1));
   let verified = await verifyToken(options.apiUrl, deviceToken);
-  verified.rejected && (console.error(`Login failed: token rejected by the server (${verified.detail}).`), console.error("Create a new token in VibeHub > Settings > Tracker and try again."), process.exit(1));
+  verified.rejected && (console.error(`Login failed: token rejected by the server (${verified.detail}).`), console.error(`Run \`${pairCommand(options.apiUrl)}\` to connect without a token.`), process.exit(1));
   let existing = readConfig(), config = {
     apiUrl: options.apiUrl,
     deviceToken,
@@ -5148,13 +5152,13 @@ program2.command("status").description(`pretty-print the current ${STATUS_PATH_L
   let status = readStatus(), { running, pid } = daemonStatus();
   console.log(`Daemon:  ${running ? `running (pid ${pid})` : "not running"}`);
   let login = autostartStatus(hostEnv(entryPath()), autostartOptedOut(config));
-  console.log(`At login: ${login.supported ? login.optedOut ? "no - disabled with `autostart disable`" : login.exists && login.owner === "ours" ? "yes" : login.exists ? "no - that login entry belongs to another install" : "no - run `vibehub-tracker autostart enable`" : `not available on ${login.platform}`}`), console.log(`Status:  ${status.status}`), status.status === "active" && (console.log(`Project: ${status.projectAlias}`), console.log(`Tool:    ${status.tool}`), console.log(`Model:   ${status.model}`), console.log(`Started: ${status.sessionStartedAt}`)), console.log(`Updated: ${status.updatedAt}`);
+  console.log(`At login: ${login.supported ? login.optedOut ? "no - disabled with `autostart disable`" : login.exists && login.owner === "ours" ? "yes" : login.exists ? "no - that login entry belongs to another install" : "no - run `vibehub-tracker autostart enable`" : `not available on ${login.platform}`}`), console.log(`Status:  ${status.status}`), status.status === "active" && (console.log(`Project: ${status.projectAlias === UNKNOWN_PROJECT_ALIAS ? "private (name it with `vibehub-tracker set <folder> <name>`)" : status.projectAlias}`), console.log(`Tool:    ${status.tool}`), console.log(`Model:   ${status.model}`), console.log(`Started: ${status.sessionStartedAt}`)), console.log(`Updated: ${status.updatedAt}`);
   let attested2 = attestedToolsFor(config);
   console.log("Scope:   supported AI-session activity only (Claude Code, Codex, Quadcode AI)"), attested2.length > 0 && (console.log(`Receiver: on for ${attested2.map(toolLabel).join(", ")} (opt-in, ${ATTESTED_PATH_LABEL})`), console.log("          Records come from a separate producer you installed; this tracker reads"), console.log("          no log, process or window for those tools, and never estimates their usage."), console.log("          `vibehub-tracker hooks status` shows whether anything is writing them."));
   let seeingCutoff = Date.now() - MAX_EVENT_AGE_MS, seeing = (status.sources ?? []).filter((s) => Date.parse(s.lastSeenAt) >= seeingCutoff);
   seeing.length > 0 ? console.log(`Seeing:  ${describeSources(seeing)}`) : running && console.log("Seeing:  no recent supported AI usage records (AI-only idle; other apps are not observed)");
   let freshCheck = Date.parse(status.lastConnectionCheckAt ?? "") >= Date.now() - Math.max(9e4, 3 * (config.heartbeatIntervalMs ?? 3e4));
-  status.authRejected ? (console.log("Connected: no - token rejected by the server."), console.log("  Create a new token in VibeHub > Settings > Tracker, then run:"), console.log("  vibehub-tracker login <newToken>")) : running ? status.connected && freshCheck ? (console.log("Connected: yes"), console.log("  Recent server-accepted daemon connection; does not imply an active AI session.")) : console.log("Connected: not yet - waiting for a successful daemon connection check; no AI activity is required.") : console.log("Connected: no - daemon isn't running. Run `vibehub-tracker start`.");
+  status.authRejected ? (console.log("Connected: no - token rejected by the server."), console.log("  This device was disconnected in VibeHub. Connect it again with:"), console.log(`  ${pairCommand(config.apiUrl)}`)) : running ? status.connected && freshCheck ? (console.log("Connected: yes"), console.log("  Recent server-accepted daemon connection; does not imply an active AI session.")) : console.log("Connected: not yet - waiting for a successful daemon connection check; no AI activity is required.") : console.log("Connected: no - daemon isn't running. Run `vibehub-tracker start`.");
 });
 program2.command("stop").description("stop the running tracker daemon (waits for it to end the session cleanly)").action(async () => {
   await stopDaemon();
