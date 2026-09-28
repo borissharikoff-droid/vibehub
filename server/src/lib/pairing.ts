@@ -124,14 +124,41 @@ export class PairingStore {
     };
   }
 
-  approve(userCode: string, userId: string, rawToken: string): boolean {
+  private live(userCode: string): PairingSession | null {
     const session = this.byUserCode.get(userCode.toUpperCase().trim());
-    if (!session || session.expiresAt <= Date.now() || session.claimed || session.approvedUserId) {
-      return false;
-    }
+    return session && session.expiresAt > Date.now() && !session.claimed ? session : null;
+  }
+
+  /**
+   * Step 1 of an approval: claims the code for `userId` before any token is minted, so a
+   * second Allow (a reload of the pair page, another tab, another account) can be told
+   * apart instead of minting a device token nobody will ever receive. Synchronous, so
+   * nothing can interleave between the check and the claim.
+   */
+  reserve(userCode: string, userId: string): "reserved" | "mine" | "taken" | "invalid" {
+    const session = this.live(userCode);
+    if (!session) return "invalid";
+    if (session.approvedUserId) return session.approvedUserId === userId ? "mine" : "taken";
     session.approvedUserId = userId;
+    return "reserved";
+  }
+
+  /** Step 2, once the token row exists: only now can the device's poll collect it. */
+  issue(userCode: string, userId: string, rawToken: string): boolean {
+    const session = this.live(userCode);
+    if (!session || session.approvedUserId !== userId || session.issuedToken) return false;
     session.issuedToken = rawToken;
     return true;
+  }
+
+  /** Undo a reservation whose token could not be stored; the code can be approved again. */
+  release(userCode: string, userId: string): void {
+    const session = this.live(userCode);
+    if (session && session.approvedUserId === userId && !session.issuedToken) session.approvedUserId = null;
+  }
+
+  approve(userCode: string, userId: string, rawToken: string): boolean {
+    return this.reserve(userCode, userId) === "reserved" && this.issue(userCode, userId, rawToken);
   }
 
   poll(deviceCode: string): {

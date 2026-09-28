@@ -57,6 +57,26 @@ eq("poll returns userId", approvedPoll.userId, "u_test_user");
 const secondPoll = store.poll(session.deviceCode);
 eq("second poll returns expired (session removed after claim)", secondPoll.status, "expired");
 
+// 6b. Reserve -> issue: no token can leave before its row exists, and a second Allow
+// never mints another one (QA 2026-09-29: phantom device after a pair-page reload)
+const two = store.createSession("Studio", "mac", "https://web.test");
+eq("first Allow reserves", store.reserve(two.userCode, "u_a"), "reserved");
+eq("reserved but not issued: the device still waits", store.poll(two.deviceCode).status, "pending");
+eq("same account again is the same approval", store.reserve(two.userCode, "u_a"), "mine");
+eq("another account cannot take it", store.reserve(two.userCode, "u_b"), "taken");
+eq("only the reserving account can issue", store.issue(two.userCode, "u_b", "tok_b"), false);
+eq("issue after the row exists", store.issue(two.userCode, "u_a", "tok_a"), true);
+eq("issued once", store.issue(two.userCode, "u_a", "tok_again"), false);
+eq("the device collects the first token", store.poll(two.deviceCode).token, "tok_a");
+eq("a claimed code is gone", store.reserve(two.userCode, "u_a"), "invalid");
+
+const failedInsert = store.createSession("Laptop", "windows", "https://web.test");
+store.reserve(failedInsert.userCode, "u_a");
+store.release(failedInsert.userCode, "u_a");
+eq("a failed insert releases the code", store.reserve(failedInsert.userCode, "u_b"), "reserved");
+store.release(failedInsert.userCode, "u_a");
+eq("release by another account is a no-op", store.reserve(failedInsert.userCode, "u_b"), "mine");
+
 // 7. Expired session behavior
 const shortTtlStore = new PairingStore();
 const expiredSession = shortTtlStore.createSession("PC", "windows", "https://web.test");

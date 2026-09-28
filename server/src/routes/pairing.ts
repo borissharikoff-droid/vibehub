@@ -3,6 +3,7 @@ import { z } from "zod";
 import { pairingStore } from "../lib/pairing";
 import { requireAuth } from "../middleware/auth";
 import { generateRawToken, hashToken } from "../lib/crypto";
+import { asyncHandler } from "../lib/http-error";
 import { prisma } from "../db";
 
 const router = Router();
@@ -47,7 +48,7 @@ router.get("/tracker/pair/info", (req, res) => {
 });
 
 // Authenticated user in browser approves device connection
-router.post("/tracker/pair/approve", requireAuth, async (req, res) => {
+router.post("/tracker/pair/approve", requireAuth, asyncHandler(async (req, res) => {
   const parsed = pairApproveSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: "Invalid code" });
@@ -56,39 +57,55 @@ router.post("/tracker/pair/approve", requireAuth, async (req, res) => {
 
   const { code } = parsed.data;
   const info = pairingStore.getInfo(code);
-  if (!info.valid) {
+  const userId = req.user!.id;
+  const approved = { ok: true, deviceName: info.deviceName, os: info.os, username: req.user!.username };
+  // Reserve before minting: a second Allow used to store a token nobody would ever
+  // receive - a phantom device in Settings - and then answer with an error.
+  const reservation = info.valid ? pairingStore.reserve(code, userId) : "invalid";
+  if (reservation === "invalid") {
+    res.status(404).json({ error: "Pairing session not found or expired" });
+    return;
+  }
+  if (reservation === "taken") {
+    res.status(409).json({ error: "This code was already used. Start pairing again on the device." });
+    return;
+  }
+  if (reservation === "mine") {
+    // Already allowed by this account (reload, second tab): the device collects the
+    // first token, so this is the same success, not a new device.
+    res.json(approved);
+    return;
+  }
+
+  const rawToken = generateRawToken();
+  const label = `${info.deviceName || "Device"} (${info.os || "unknown"})`;
+  let row: { id: string };
+  try {
+    row = await prisma.trackerToken.create({
+      data: {
+        userId,
+        label,
+        tokenHash: hashToken(rawToken),
+      },
+      select: { id: true },
+    });
+  } catch (err) {
+    pairingStore.release(code, userId);
+    throw err;
+  }
+
+  if (!pairingStore.issue(code, userId, rawToken)) {
+    // Expired while the row was written: nobody can collect it, so it must not linger.
+    await prisma.trackerToken.delete({ where: { id: row.id } }).catch(() => undefined);
     res.status(404).json({ error: "Pairing session not found or expired" });
     return;
   }
 
-  const userId = req.user!.id;
-  const rawToken = generateRawToken();
-  const label = `${info.deviceName || "Device"} (${info.os || "unknown"})`;
-
-  await prisma.trackerToken.create({
-    data: {
-      userId,
-      label,
-      tokenHash: hashToken(rawToken),
-    },
-  });
-
-  const approved = pairingStore.approve(code, userId, rawToken);
-  if (!approved) {
-    res.status(400).json({ error: "Pairing code expired or already approved" });
-    return;
-  }
-
-  res.json({
-    ok: true,
-    deviceName: info.deviceName,
-    os: info.os,
-    username: req.user!.username,
-  });
-});
+  res.json(approved);
+}));
 
 // Device polls for pairing outcome (unauthenticated, requires secret deviceCode)
-router.post("/tracker/pair/poll", async (req, res) => {
+router.post("/tracker/pair/poll", asyncHandler(async (req, res) => {
   const parsed = pairPollSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: "Invalid device code" });
@@ -122,6 +139,6 @@ router.post("/tracker/pair/poll", async (req, res) => {
   }
 
   res.json({ status: "pending" });
-});
+}));
 
 export default router;
