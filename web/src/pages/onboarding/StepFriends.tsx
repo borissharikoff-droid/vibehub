@@ -82,7 +82,7 @@ export function StepFriends({ onInvited, onBack, onNext }: Props) {
           <SkeletonRow count={5} withAction />
         ) : users.length === 0 ? (
           <p className={styles.emptyRow}>
-            {query ? "Nobody by that name yet." : "You're early — nobody else is here yet. Share the link and come back."}
+            {query ? "Nobody by that name yet." : "No one here yet. Skip for now."}
           </p>
         ) : (
           <ul className={[styles.rows, "stagger"].join(" ")}>

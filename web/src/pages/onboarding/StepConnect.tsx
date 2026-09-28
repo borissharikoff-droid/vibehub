@@ -43,7 +43,7 @@ export function StepConnect({ onBack, onNext, onConnected }: Props) {
         </>
       )}
 
-      <ConnectTools onConnected={markConnected} onCelebrated={advance} />
+      <ConnectTools onConnected={markConnected} onCelebrated={advance} hidePanel />
 
       <details className={styles.support}>
         <summary>What's supported</summary>

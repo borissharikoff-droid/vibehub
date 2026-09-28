@@ -75,9 +75,15 @@ export function HomePage() {
   });
   const now = useNow(anyLastSeen, 60_000);
 
+  // "Back at it" is for someone who has been here before; the first hour after
+  // onboarding is a first visit, and the line says so.
+  const onboardedAt = user?.onboardedAt ? Date.parse(user.onboardedAt) : NaN;
+  const firstVisit = !Number.isFinite(onboardedAt) || Date.now() - onboardedAt < 60 * 60_000;
+  const greeting = firstVisit ? "Welcome in" : "Back at it";
+
   return (
     <div>
-      <h1 className={styles.greeting}>Back at it, {user?.displayName}.</h1>
+      <h1 className={styles.greeting}>{greeting}, {user?.displayName}.</h1>
       <p className={styles.subtitle}>What your friends are shipping right now.</p>
 
       {/* Stays mounted regardless of connected state — it needs to notice an

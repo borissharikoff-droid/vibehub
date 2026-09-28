@@ -347,7 +347,7 @@ export function showHomeDevices(devices: readonly { lastUsedAt: string | null }[
 export function revokeQuestion(label: string): { title: string; body: string } {
   return {
     title: `Revoke ${label}?`,
-    body: "This removes reporting authorization, but does not guarantee local shutdown or erase history. Reconnect with a new device command to report again.",
+    body: "It stops reporting, but may keep running on its own. Past stats stay. Connect it again anytime.",
   };
 }
 

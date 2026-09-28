@@ -92,6 +92,19 @@ export function protectedRouteDecision(input: {
 // redoing either. `undefined` is "not resolved yet"; every other value is final.
 let cached: string | null | undefined;
 
+/** The remembered destination without consuming it — the login page reads it to say
+ *  what signing in is for ("Sign in to connect your Mac"). Mirrors takeLoginReturn's
+ *  cache so both agree within one page load. */
+export function pendingLoginReturn(): string | null {
+  if (cached !== undefined) return cached;
+  try {
+    const path = session()?.getItem(KEY) ?? null;
+    return path !== null && isSafeLocalPath(path) ? path : null;
+  } catch {
+    return null;
+  }
+}
+
 /** True once per remember, no matter how many times this is called: the first
  *  call resolves and caches the answer for the rest of this page load, so a
  *  React StrictMode double-invoke or a later remount of the caller both get the

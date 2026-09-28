@@ -3,7 +3,7 @@ import type { FormEvent } from "react";
 import { Navigate } from "react-router-dom";
 import { authApi, githubLoginUrl } from "../lib/api";
 import type { AuthCapabilities } from "../lib/api";
-import { takeLoginReturn } from "../lib/loginReturn";
+import { isPairPath, pendingLoginReturn, takeLoginReturn } from "../lib/loginReturn";
 import { useAuth } from "../context/AuthContext";
 import { Card } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
@@ -22,6 +22,9 @@ export function LoginPage() {
     () => new URLSearchParams(window.location.search).get("error")
   );
   const [submitting, setSubmitting] = useState(false);
+  // Bounced here from a /pair link (the Mac app or `vibehub-tracker pair` opened it):
+  // say so, instead of a welcome line that makes the person wonder if the link got lost.
+  const [forPair] = useState(() => isPairPath((pendingLoginReturn() ?? "").split("?")[0]));
   const [claiming, setClaiming] = useState(
     () => Boolean(new URLSearchParams(window.location.search).get("oauth"))
   );
@@ -97,7 +100,9 @@ export function LoginPage() {
       <Card className={styles.card}>
         <LogoLottie size={56} className={styles.mark} />
         <h1 className={styles.title}>Welcome to VibeHub</h1>
-        <p className={styles.subtitle}>Steam, for people who ship with an AI pair.</p>
+        <p className={styles.subtitle}>
+          {forPair ? "Sign in to connect your Mac." : "Steam, for people who ship with an AI pair."}
+        </p>
 
         {error && <p className={styles.error}>{error}</p>}
 

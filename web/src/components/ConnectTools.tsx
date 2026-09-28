@@ -224,6 +224,9 @@ interface Props {
   variant?: "compact" | "banner" | "full";
   /** First server-observed live connection, including one already live at mount. */
   onConnected?: () => void;
+  /** Never show the live stats panel here — onboarding's connect step is one action
+   *  and a headline, not a dashboard. The celebration and the waiting card still show. */
+  hidePanel?: boolean;
   onCelebrated?: () => void;
 }
 
@@ -233,7 +236,7 @@ export function ConnectTools(props: Props) {
   return <ConnectToolsForUser key={user?.id ?? "signed-out"} {...props} />;
 }
 
-function ConnectToolsForUser({ variant = "compact", onConnected, onCelebrated }: Props) {
+function ConnectToolsForUser({ variant = "compact", onConnected, onCelebrated, hidePanel = false }: Props) {
   const { user } = useAuth();
   const { presences } = useRealtime();
   const userId = user?.id ?? null;
@@ -408,7 +411,7 @@ function ConnectToolsForUser({ variant = "compact", onConnected, onCelebrated }:
   const dismiss = () => { if (userId) markTrackingSeen(userId); setSeen(true); };
   const showCard = phase === "waiting";
   const { render: renderCard, closing: cardClosing } = useExitTransition(showCard, EXIT_MS);
-  const showPanel = everConnected && !(isBanner && seen) && !renderCard;
+  const showPanel = everConnected && !(isBanner && seen) && !renderCard && !hidePanel;
   const { render: renderPanel, closing: panelClosing } = useExitTransition(showPanel, EXIT_MS);
   const showStrip = isBanner && everConnected && seen && !renderCard && !renderPanel;
   const now = useNow(variant === "full" && phase === "waiting", 5000);

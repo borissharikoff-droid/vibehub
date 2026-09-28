@@ -603,11 +603,13 @@
   }
 }
 
-@media (max-width: 480px) {
+@media (max-width: 720px) {
   /* Source rows: tokens/last-seen drop under the tool line so the model name
      keeps its full text instead of ellipsizing next to a wide right column. The
      numbers column gives up its floor with it — there is no second column left to
-     line up with. */
+     line up with. 720px, not a phone width: with the label rail still up, a
+     640px viewport leaves the row ~458px, the figures take ~280px of it, and
+     "Opus 5.5 · Claude Code" was already reading "Opus … · Claude C…". */
   .rowSource {
     flex-wrap: wrap;
     row-gap: 0;
@@ -619,6 +621,9 @@
     min-width: 0;
     padding-left: 20px;
   }
+}
+
+@media (max-width: 480px) {
   .actions {
     flex-direction: column-reverse;
     align-items: stretch;

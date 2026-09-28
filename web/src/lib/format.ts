@@ -65,6 +65,10 @@ const TOOL_NAMES: Record<ToolFamily, string> = {
   unknown: "Unknown tool",
 };
 
+/** What `toolLabel` says for a tool it cannot name — so a caller that would rather
+ *  show nothing than a placeholder can recognise it (ADHD rule 5: no "unknown"). */
+export const UNKNOWN_TOOL_LABEL = TOOL_NAMES.unknown;
+
 const NULL_IDS = new Set(["", "unknown", "<synthetic>", "null", "undefined", "none", "n/a"]);
 
 function normalizeToolId(id: string | null | undefined): string {
@@ -281,9 +285,15 @@ export function presenceStatusLabel(status: "active" | "idle" | "offline" | null
   return "Offline";
 }
 
-/** 1.5k, 101k, 1M, 197M: one decimal only while it still tells you something. */
+/** 1.5k, 101k, 1M, 197M, 1.2B: one decimal only while it still tells you something.
+ *  A count that is not a number reads "—", never "NaN". */
 export function formatTokens(n: number): string {
-  const [v, unit] = n >= 999_500 ? [n / 1_000_000, "M"] : n >= 1_000 ? [n / 1_000, "k"] : [n, ""];
+  if (!Number.isFinite(n)) return "—";
+  const [v, unit] =
+    n >= 999_500_000 ? [n / 1_000_000_000, "B"]
+    : n >= 999_500 ? [n / 1_000_000, "M"]
+    : n >= 1_000 ? [n / 1_000, "k"]
+    : [n, ""];
   if (!unit) return String(n);
   return `${v >= 100 ? Math.round(v) : Number(v.toFixed(1))}${unit}`;
 }

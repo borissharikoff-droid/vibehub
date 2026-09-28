@@ -78,7 +78,10 @@ export function PairPage() {
       await pairingApi.approve(activeCode);
       setApproved(true);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Couldn't connect this device. Try again.");
+      // The server's reasons ("Pairing session not found or expired", a 500) are not
+      // for the person; the one thing they can do about any of them is get a new code.
+      const gone = err instanceof Error && /expired|not found|already approved/i.test(err.message);
+      setError(gone ? "That code expired. Get a new one in VibeHub." : "Couldn't connect this device. Try again.");
     } finally {
       setApproving(false);
     }
@@ -93,6 +96,8 @@ export function PairPage() {
   };
 
   const osLabel = info?.os === "mac" ? "Mac" : info?.os === "windows" ? "PC" : "device";
+  // The raw id ("mac", "unknown") never reaches the page; an unrecognised OS says nothing.
+  const osName = info?.os === "mac" ? "macOS" : info?.os === "windows" ? "Windows" : info?.os === "linux" ? "Linux" : null;
   // A brand-new user can land here mid-onboarding (ProtectedRoute lets /pair through),
   // so "done" means back to setup for them, home for everyone else.
   const midSetup = !user?.onboardedAt;
@@ -106,7 +111,7 @@ export function PairPage() {
             <div className={styles.successIcon}><Icon name="check" size={24} /></div>
             <h1 className={styles.title}>Connected ✓</h1>
             <p className={styles.subtitle}>
-              {info?.deviceName || "Your device"} is live on @{user?.username}.
+              {info?.deviceName || "Your device"} now reports as @{user?.username}.
               {midSetup ? "" : " You can close this tab."}
             </p>
             <Button
@@ -150,12 +155,12 @@ export function PairPage() {
             <div className={styles.deviceBox}>
               <div className={styles.deviceMeta}>
                 <span className={styles.deviceName}>{info.deviceName || "Personal Computer"}</span>
-                <span className={styles.deviceOs}>{info.os || "Desktop"}</span>
+                {osName && <span className={styles.deviceOs}>{osName}</span>}
               </div>
               <span className={styles.codeBadge}>{info.userCode}</span>
             </div>
 
-            <p className={styles.summary}>Sends usage counts only. Code and prompts stay here.</p>
+            <p className={styles.summary}>Sends usage stats to @{user?.username}, never code or prompts.</p>
 
             {error && (
               <p className={styles.error} role="alert">{error}</p>
@@ -170,12 +175,12 @@ export function PairPage() {
                 {approving ? "Connecting…" : `Allow this ${osLabel}`}
               </Button>
               <Button
-                variant="secondary"
+                variant="ghost"
                 className={styles.cancelBtn}
                 onClick={() => navigate(exitPath)}
                 disabled={approving}
               >
-                Cancel
+                Not now
               </Button>
             </div>
 

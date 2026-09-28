@@ -342,7 +342,7 @@ vibehub_connect_main() (
       fi
     done
   elif ! [[ "$TOKEN" =~ ^[A-Za-z0-9_][A-Za-z0-9_-]+$ ]] || [ "${#TOKEN}" -lt 8 ] || [ "${#TOKEN}" -gt 512 ]; then
-    fail 'Set VIBEHUB_TOKEN to a device token from VibeHub Settings > Tracker.'
+    fail 'Set VIBEHUB_TOKEN to the code from VibeHub Settings > Devices > Add device, or run: vibehub-tracker pair'
   fi
   BASE="$HOME/.vibehub"
   APP="$BASE/app"

@@ -409,12 +409,12 @@ eq("order of the used ones is preserved", homeDevices(two).map((d) => d.label), 
 // One ghost click used to end a machine's tracking with no way back but a reinstall.
 const q = revokePrompt("Windows · Sep 16");
 eq("names the machine", q.startsWith("Revoke Windows · Sep 16?"), true);
-eq("states remote reporting authorization, not local process control", /removes reporting authorization/.test(q), true);
-eq("makes no guarantee of local shutdown", /does not guarantee local shutdown/.test(q), true);
-eq("makes no history-erasure promise", /or erase history/.test(q), true);
-eq("says how to report again", /Reconnect with a new device command to report again\./.test(q), true);
-eq("never mentions keys or tokens", /token|key/i.test(q), false);
-eq("keeps the critical disclosure concise, not truncated", q.length < 220, true);
+eq("states that reporting stops, not that the process does", /It stops reporting/.test(q), true);
+eq("makes no guarantee of local shutdown", /may keep running on its own/.test(q), true);
+eq("makes no history-erasure promise", /Past stats stay\./.test(q), true);
+eq("says how to report again", /Connect it again anytime\./.test(q), true);
+eq("never mentions keys, tokens, commands or authorization", /token|key|command|authoriz/i.test(q), false);
+eq("reads in one breath (ADHD rule: no paragraphs)", q.split(/\s+/).length <= 24 && q.length < 160, true);
 eq("revoked-key recovery uses the one-command path", /new install & start command/.test(STALE_TRACKER_FIX), true);
 eq("revoked-key recovery contains no numbered split steps", /step [12]/i.test(STALE_TRACKER_FIX), false);
 

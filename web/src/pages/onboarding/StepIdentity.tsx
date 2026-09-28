@@ -76,7 +76,7 @@ export function StepIdentity({ user, onSaved, onNext }: Props) {
   return (
     <form className={styles.step} onSubmit={submit}>
       <h1 className={styles.title}>Who are you here?</h1>
-      <p className={styles.lead}>Pick a nickname and a face. You can change both later.</p>
+      <p className={styles.lead}>Pick a nickname and a photo.</p>
 
       <button
         type="button"

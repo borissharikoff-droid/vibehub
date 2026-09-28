@@ -2,7 +2,7 @@ import { useEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import type { CSSProperties } from "react";
 import { toolsOf } from "../../lib/api";
-import { formatActiveTime, formatTokens, humanizeModel, modelFamily, projectLabel, toolFamily, toolLabel } from "../../lib/format";
+import { formatActiveTime, formatTokens, humanizeModel, modelFamily, projectLabel, toolFamily, toolLabel, UNKNOWN_TOOL_LABEL } from "../../lib/format";
 import { modelsOfSources, sumToday } from "../../lib/sources";
 import { TOKENS_NOT_REPORTED, TOKENS_NOT_REPORTED_TITLE } from "../../lib/supportedTools";
 import type { TrackerStatus } from "../../types";
@@ -74,11 +74,11 @@ export function ConnectCelebration({ open, status, onRefresh, onClose }: Props) 
     const primary = toolsOf(status?.presence)[0];
     if (primary) {
       return [toolLabel(primary.tool), humanizeModel(primary.model), projectLabel(primary.projectAlias)].filter(
-        (v): v is string => Boolean(v)
+        (v): v is string => Boolean(v) && v !== UNKNOWN_TOOL_LABEL
       );
     }
     const first = sources[0];
-    if (first) return [toolLabel(first.tool), humanizeModel(first.model)].filter((v): v is string => Boolean(v));
+    if (first) return [toolLabel(first.tool), humanizeModel(first.model)].filter((v): v is string => Boolean(v) && v !== UNKNOWN_TOOL_LABEL);
     return [];
   }, [status?.presence, sources]);
 
