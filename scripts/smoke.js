@@ -249,9 +249,10 @@ async function main() {
 
   // --- round 6: multi-tool presence, quadcode, estimated usage ----------------------
   // People sit in several tools at once, so presence reports the whole stack while
-  // hours and tokens still accrue only to the primary. `estimated: true` marks counts
-  // the tracker derived (Quadcode logs carry no token numbers); the server must accept
-  // the flag and must not let it change accounting.
+  // hours still accrue only to the primary. Quadcode is tokenless (server/src/lib/tools.ts):
+  // it opens the session but carries no counts, which the server refuses for it. Counts
+  // ride `usage[]` for a measuring tool; `estimated: true` marks counts the tracker
+  // derived, and the server must accept the flag and must not let it change accounting.
   const statsBeforeMulti = await call("GET", `/users/${smokeUser}/stats`);
   const hbMulti = await call("POST", "/tracker/heartbeat", {
     token: tokenRes?.token,
@@ -260,9 +261,7 @@ async function main() {
       projectAlias: "smoke-multi",
       tool: "quadcode",
       model: "claude-fable-5-1",
-      tokensInputDelta: 40,
-      tokensOutputDelta: 60,
-      usage: [{ tool: "quadcode", model: "claude-fable-5-1", tokensInputDelta: 40, tokensOutputDelta: 60, estimated: true }],
+      usage: [{ tool: "claude-code", model: "claude-opus-5", tokensInputDelta: 40, tokensOutputDelta: 60, estimated: true }],
       tools: [
         { tool: "quadcode", model: "claude-fable-5-1", projectAlias: "smoke-multi" },
         { tool: "cursor", model: null, projectAlias: "smoke-multi" },
