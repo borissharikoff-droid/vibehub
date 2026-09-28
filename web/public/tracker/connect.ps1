@@ -417,7 +417,7 @@ try {
       }
     }
   } elseif ($Token -cnotmatch '^[A-Za-z0-9_][A-Za-z0-9_-]{7,511}\z') {
-    Stop-Connect 'Set VIBEHUB_TOKEN to the code from VibeHub Settings > Devices > Add device, or run: vibehub-tracker pair'
+    Stop-Connect 'Get the command from VibeHub Settings > Tracker > Add device and run it again.'
   }
   if ($HOME -notmatch '^[A-Za-z]:[\\/].+' -or -not (Test-Path -LiteralPath $HOME -PathType Container)) { Stop-Connect 'An existing local user HOME directory is required; do not run as an administrator.' }
   try { $osArchitecture = [Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString() } catch {

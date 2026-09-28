@@ -106,12 +106,16 @@ export function PairPage() {
   return (
     <div className={styles.container}>
       <div className={styles.card}>
-        {approved ? (
+        {approved || info?.alreadyApproved ? (
           <div className={styles.successBox}>
             <div className={styles.successIcon}><Icon name="check" size={24} /></div>
-            <h1 className={styles.title}>Connected ✓</h1>
+            <h1 className={styles.title}>{approved ? "Connected ✓" : "Already connected ✓"}</h1>
             <p className={styles.subtitle}>
-              {info?.deviceName || "Your device"} now reports as @{user?.username}.
+              {/* A reload after Allow (or a second tab) used to offer Allow again and
+                  mint a second device; the code is spent, and the device is on its way. */}
+              {approved
+                ? `${info?.deviceName || "Your device"} now reports as @${user?.username}.`
+                : `${info?.deviceName || "Your device"} was allowed already. Nothing more to do here.`}
               {midSetup ? "" : " You can close this tab."}
             </p>
             <Button

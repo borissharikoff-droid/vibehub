@@ -101,7 +101,7 @@ export function LoginPage() {
         <LogoLottie size={56} className={styles.mark} />
         <h1 className={styles.title}>Welcome to VibeHub</h1>
         <p className={styles.subtitle}>
-          {forPair ? "Sign in to connect your Mac." : "Steam, for people who ship with an AI pair."}
+          {forPair ? "Sign in to connect this device." : "Steam, for people who ship with an AI pair."}
         </p>
 
         {error && <p className={styles.error}>{error}</p>}
