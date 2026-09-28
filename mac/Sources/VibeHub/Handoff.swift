@@ -19,6 +19,17 @@ struct HandoffServers: Equatable {
     /// Nothing to adopt — used to discard an empty or token-only drop without making
     /// every call site unwrap an optional twice.
     var isEmpty: Bool { apiUrl == nil && webUrl == nil }
+
+    /// Every named server is https — plain http only for a dev stack on this machine.
+    /// What a deep link is held to before it may re-point the app anywhere.
+    var isSecure: Bool {
+        [apiUrl, webUrl].compactMap { $0 }.allSatisfy { url in
+            let scheme = url.scheme?.lowercased()
+            if scheme == "https" { return true }
+            let host = url.host?.lowercased() ?? ""
+            return scheme == "http" && (host == "localhost" || host == "127.0.0.1")
+        }
+    }
 }
 
 /// The two ways *server selection* reaches the app without the user typing it:

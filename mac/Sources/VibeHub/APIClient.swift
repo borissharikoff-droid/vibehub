@@ -10,7 +10,7 @@ enum APIError: LocalizedError, Equatable {
     var errorDescription: String? {
         switch self {
         case .noToken: return "No tracker token"
-        case .unauthorized: return "Token rejected. Paste a fresh one in Settings."
+        case .unauthorized: return "Sign-in expired. Reconnect this Mac."
         case .server(let code): return "Server error (\(code))"
         case .transport: return "Can't reach VibeHub"
         case .decoding: return "Unexpected response"
@@ -91,13 +91,18 @@ struct APIClient {
         }
     }
 
-    func pairRequest(deviceName: String, os: String = "mac") async -> Result<PairRequestResponse, APIError> {
+    /// `webUrl` names the site the approval page should open on, so a non-default
+    /// install (staging, a local stack) is approved on *its* site rather than on the
+    /// server's default one — which never saw the code.
+    func pairRequest(deviceName: String, os: String = "mac", webUrl: URL? = nil) async -> Result<PairRequestResponse, APIError> {
         var request = URLRequest(url: baseURL.appendingPathComponent("api/v1/tracker/pair/request"))
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.timeoutInterval = 15
-        request.httpBody = try? JSONSerialization.data(withJSONObject: ["deviceName": deviceName, "os": os])
+        var body: [String: String] = ["deviceName": deviceName, "os": os]
+        if let webUrl { body["webUrl"] = webUrl.absoluteString }
+        request.httpBody = try? JSONSerialization.data(withJSONObject: body)
         do {
             let (data, response) = try await URLSession.shared.data(for: request)
             guard let http = response as? HTTPURLResponse else { return .failure(.transport("No HTTP response")) }

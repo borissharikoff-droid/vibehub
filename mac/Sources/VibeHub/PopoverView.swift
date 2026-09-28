@@ -314,8 +314,8 @@ struct PopoverView: View {
                             .lineLimit(1)
                         PresenceDot(status: friend.status, size: 6)
                         Spacer(minLength: 0)
-                        if let activity = friend.activity {
-                            Text(Format.toolLabel(activity.tool))
+                        if let activity = friend.activity, let tool = Format.knownToolLabel(activity.tool) {
+                            Text(tool)
                                 .font(.system(size: 11))
                                 .foregroundStyle(.tertiary)
                                 .lineLimit(1)

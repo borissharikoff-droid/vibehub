@@ -1,3 +1,4 @@
+import AppKit
 import Combine
 import Darwin
 import Foundation
@@ -11,7 +12,7 @@ enum TrackerManagerError: LocalizedError, Equatable {
 
     var errorDescription: String? {
         switch self {
-        case .noToken: return "No tracker token to start tracking with."
+        case .noToken: return "Connect this Mac first."
         case .bundleMissing: return "The bundled tracker is missing from this build."
         case .notInApplications: return "Move VibeHub to your Applications folder first, then start tracking."
         case .processFailed(let detail): return detail
@@ -163,6 +164,103 @@ final class TrackerManager: ObservableObject {
     /// token source (pasted, `vibehub://connect`, installer handoff) raises the same
     /// way, so `OnboardingWizard` can auto-advance regardless of which one fired.
     @Published private(set) var connectedUsername: String?
+
+    // MARK: - Browser pairing
+
+    /// Where a browser pairing stands. It lives on the manager, not in a view: opening
+    /// the approval page activates the browser, which closes a menu-bar window, and a
+    /// view-owned task is cancelled with it — the approval then lands on nobody (the
+    /// server hands each token out exactly once). Here it outlives the popover.
+    enum PairingPhase: Equatable { case requesting, waiting, connecting }
+    struct PairingState: Equatable {
+        var phase: PairingPhase
+        var code: String?
+        var verificationURL: URL?
+    }
+    @Published private(set) var pairing: PairingState?
+    /// Why the last pairing attempt ended without connecting; cleared by the next one.
+    @Published private(set) var pairingError: String?
+    /// Runs once a pairing has connected — `VibeHubApp` wakes `StatusStore` from here,
+    /// so the popover shows the account even if no view was on screen to ask for it.
+    var onPaired: (() -> Void)?
+    private var pairingTask: Task<Void, Never>?
+    /// Consecutive poll failures before giving up, so a dropped network is a message
+    /// within about a minute rather than ten minutes of "Waiting…".
+    private static let pairingPollFailureLimit = 5
+
+    func startBrowserPairing() {
+        #if DEBUG
+        if isFixture { pairingError = "QA fixture: disabled."; return }
+        #endif
+        guard pairing == nil else { return }
+        pairing = PairingState(phase: .requesting, code: nil, verificationURL: nil)
+        pairingError = nil
+        let client = APIClient(baseURL: settings.baseURL)
+        let webUrl = settings.webUrl
+        pairingTask = Task { @MainActor [weak self] in
+            // Host-name resolution can stall for seconds; never on the main thread.
+            let deviceName = await Task.detached(priority: .userInitiated) { Host.current().localizedName ?? "Mac" }.value
+            guard let self, !Task.isCancelled else { return }
+            let pair: PairRequestResponse
+            switch await client.pairRequest(deviceName: deviceName, os: "mac", webUrl: webUrl) {
+            case .failure(let error):
+                self.endPairing(error: error.errorDescription ?? "Can\u{2019}t reach VibeHub")
+                return
+            case .success(let response):
+                pair = response
+            }
+            guard !Task.isCancelled else { return }
+            let verificationURL = URL(string: pair.verificationUri)
+            self.pairing = PairingState(phase: .waiting, code: pair.userCode, verificationURL: verificationURL)
+            if let verificationURL { NSWorkspace.shared.open(verificationURL) }
+
+            let deadline = Date().addingTimeInterval(Double(pair.expiresIn))
+            var failures = 0
+            while !Task.isCancelled && Date() < deadline {
+                try? await Task.sleep(nanoseconds: UInt64(max(1, pair.interval)) * 1_000_000_000)
+                guard !Task.isCancelled else { return }
+                switch await client.pairPoll(deviceCode: pair.deviceCode) {
+                case .failure:
+                    failures += 1
+                    if failures >= Self.pairingPollFailureLimit {
+                        self.endPairing(error: "Can\u{2019}t reach VibeHub. Try again.")
+                        return
+                    }
+                case .success(let poll):
+                    failures = 0
+                    guard !Task.isCancelled else { return }
+                    if poll.status == "approved", let token = poll.token {
+                        self.pairing?.phase = .connecting
+                        switch await self.connect(token: token) {
+                        case .success:
+                            self.endPairing(error: nil)
+                            self.onPaired?()
+                        case .failure(let error):
+                            self.endPairing(error: error.errorDescription ?? "Couldn\u{2019}t connect. Try again.")
+                        }
+                        return
+                    } else if poll.status == "expired" {
+                        self.endPairing(error: "That request expired. Try again.")
+                        return
+                    }
+                }
+            }
+            if !Task.isCancelled { self.endPairing(error: "Not approved in time. Try again.") }
+        }
+    }
+
+    func cancelPairing() {
+        pairingTask?.cancel()
+        pairingTask = nil
+        pairing = nil
+        pairingError = nil
+    }
+
+    private func endPairing(error: String?) {
+        pairingTask = nil
+        pairing = nil
+        pairingError = error
+    }
     @Published private(set) var startProgress: TrackAtLoginProgress = .idle
     /// N7: why the app's own login registration could not be set, if it could not.
     /// Surfaced next to the one switch that owns both halves, instead of leaving a
@@ -439,7 +537,12 @@ final class TrackerManager: ObservableObject {
             return .failure(.processFailed(message))
         }
         lastActionError = nil
-        let username = confirmedLine.dropFirst(confirmedPrefix.count).trimmingCharacters(in: .whitespaces)
+        // "Logged in as @bob. Wrote ~/.vibehub/config.json (apiUrl: …)." — only the
+        // handle is the user's; the rest of the line is the CLI talking about files.
+        let handle = confirmedLine.dropFirst(confirmedPrefix.count)
+            .split(whereSeparator: { $0 == " " || $0 == "." })
+            .first.map(String.init) ?? ""
+        let username = handle.hasPrefix("@") ? String(handle.dropFirst()) : handle
         return .success(username)
     }
 
@@ -618,7 +721,7 @@ final class TrackerManager: ObservableObject {
         Task {
             try? await Task.detached { try agent.uninstall() }.value
             self.isTrackAtLoginEnabled = agent.isInstalled
-            self.lastActionError = "VibeHub couldn't sign in with the saved token. Reconnect this Mac to start tracking again."
+            self.lastActionError = "Sign-in expired. Reconnect this Mac."
         }
     }
 

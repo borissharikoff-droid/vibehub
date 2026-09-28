@@ -31,8 +31,11 @@ enum Format {
             return String(format: "%.1fk", Double(n) / 1_000).replacingOccurrences(of: ".0", with: "")
         case 10_000..<1_000_000:
             return "\(n / 1_000)k"
-        default:
+        case 1_000_000..<1_000_000_000:
             return String(format: "%.1fM", Double(n) / 1_000_000).replacingOccurrences(of: ".0", with: "")
+        default:
+            // Cache reads run to hundreds of millions a day; a billion is one long day.
+            return String(format: "%.1fB", Double(n) / 1_000_000_000).replacingOccurrences(of: ".0", with: "")
         }
     }
 
@@ -63,6 +66,13 @@ enum Format {
         "chatgpt": "ChatGPT",
         "grok": "Grok",
     ]
+
+    /// `toolLabel` without the placeholder: nil when the tool is unnamed, so a line
+    /// or a row can drop the segment instead of printing "Unknown tool" (rule 5).
+    static func knownToolLabel(_ raw: String?) -> String? {
+        let label = toolLabel(raw)
+        return label == "Unknown tool" ? nil : label
+    }
 
     static func toolLabel(_ raw: String?) -> String {
         guard let raw else { return "Unknown tool" }
@@ -154,7 +164,7 @@ enum Format {
     /// "neon-app · Claude Code · Opus 5.5" — segments that are nil simply vanish, so
     /// a presence-only tool never renders a dangling separator.
     static func activityLine(_ activity: TrackerMe.Activity) -> String {
-        [projectLabel(activity.project), toolLabel(activity.tool), modelLabel(activity.model)]
+        [projectLabel(activity.project), knownToolLabel(activity.tool), modelLabel(activity.model)]
             .compactMap { $0 }
             .joined(separator: " · ")
     }

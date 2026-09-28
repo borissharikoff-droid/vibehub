@@ -212,7 +212,7 @@ struct IslandBand: View {
             HStack(spacing: 5) {
                 Text(Format.optionalCount(me.today.tokens))
                     .accessibilityLabel(me.today.tokens.map { "\(Format.compactCount($0)) tokens" } ?? Format.tokensLabel(nil))
-                if let usd = me.today.estimatedUsd {
+                if let usd = me.today.estimatedUsd, usd > 0 {
                     Text("\u{2248}" + Format.compactUsd(usd))
                         .foregroundStyle(Color.white.opacity(0.55))
                         .accessibilityLabel("about \(Format.compactUsd(usd))")
@@ -226,7 +226,7 @@ struct IslandBand: View {
         case .loading:
             Capsule().fill(Color.white.opacity(0.18)).frame(width: 30, height: 6)
         case .needsToken:
-            Text("Sign in")
+            Text("Connect")
                 .font(.system(size: 12, weight: .medium))
                 .foregroundStyle(Color.white.opacity(0.6))
                 .fixedSize()
@@ -334,8 +334,8 @@ struct IslandBody: View {
                             .lineLimit(1)
                         PresenceDot(status: friend.status, size: 6)
                         Spacer(minLength: 8)
-                        if let activity = friend.activity {
-                            Text(Format.toolLabel(activity.tool))
+                        if let activity = friend.activity, let tool = Format.knownToolLabel(activity.tool) {
+                            Text(tool)
                                 .font(.system(size: 11))
                                 .foregroundStyle(.secondary)
                                 .lineLimit(1)

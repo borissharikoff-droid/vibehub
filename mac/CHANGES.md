@@ -1,3 +1,11 @@
+# 1.2.6 (build 9) — Connect finishes from the popover; a link can't re-point a signed-in app (2026-09-29)
+
+- Connect from the popover or Settings never finished: opening the approval page brought the browser forward, which closed the popover, and the view that was polling for the approval went with it — the server hands each code's token out once, so the approval landed on nobody. The pairing now runs on `TrackerManager` and outlives the popover; the row reads "Waiting for your browser…" then "Connecting…", and a dropped network says "Can't reach VibeHub. Try again." after five failed polls instead of ten minutes of waiting. The host name is resolved off the main thread (it could freeze the click).
+- `vibehub://connect?apiUrl=…` opened from any web page re-pointed a signed-in app at whatever server it named, and the next poll carried the bearer token there. A deep link now applies only before sign-in and only to https (plain http for localhost). The installer's `handoff.json` is unchanged.
+- Pairing sends `webUrl`, so a staging or local install approves on its own site, not the server's default one.
+- Settings said "Verified as @bob. Wrote ~/.vibehub/config.json (apiUrl: …).." — the CLI's whole line. Now "Connected as @bob."
+- Copy: "Sign-in expired. Reconnect this Mac." (was "Token rejected. Paste a fresh one in Settings."), "Connect this Mac first." (was "No tracker token to start tracking with."), "Not approved in time. Try again.", the island pill says Connect (was Sign in), the Settings × is "Close". Friend rows and the Now line drop a tool they can't name instead of printing "Unknown tool"; the island pill hides ≈$0.00; counts past a billion read "1.2B".
+
 # 1.2.5 (build 8) — "Starting…" instead of "Not counting" right after install (2026-09-26)
 
 - A freshly installed Node takes ~20 s to launch (macOS scans the new binary) before the daemon writes its pid file; the popover said "Not counting" for that whole window after every upgrade or connect. For 60 s after the app (re)starts the LaunchAgent job, a missing pid now reads "Starting…".

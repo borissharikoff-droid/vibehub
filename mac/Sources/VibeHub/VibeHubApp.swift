@@ -98,9 +98,19 @@ struct VibeHubApp: App {
         // server, and can no longer carry a token (`Handoff.parse` ignores one).
         appDelegate.onOpenURLs = { urls in
             guard let url = urls.first, let servers = Handoff.parse(url: url) else { return }
-            settings.adopt(baseURL: servers.apiUrl, webUrl: servers.webUrl)
-            store.wake()
+            Task { @MainActor in
+                // A link is untrusted input: any web page can open one. It must never
+                // re-point a signed-in app — the next poll would carry the bearer token
+                // to whatever server it named — and never point anywhere but https.
+                guard TokenStore.shared.token == nil, servers.isSecure else { return }
+                settings.adopt(baseURL: servers.apiUrl, webUrl: servers.webUrl)
+                store.wake()
+            }
         }
+        // A pairing finishes on the manager, possibly with no view on screen (the
+        // popover closes when the browser comes to the front) — wake the store so the
+        // account shows the moment the popover reopens.
+        tracker.onPaired = { store.wake() }
     }
 
     var body: some Scene {

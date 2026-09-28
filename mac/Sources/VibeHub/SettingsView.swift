@@ -29,7 +29,7 @@ struct SettingsView: View {
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(.secondary)
-                .help("Back")
+                .help("Close")
             }
 
             section("Account") {
@@ -205,7 +205,7 @@ struct SettingsView: View {
             switch result {
             case .success(let username):
                 token = ""
-                savedNote = "Verified as \(username)."
+                savedNote = "Connected as @\(username)."
                 store.wake()
             case .failure(let error):
                 savedNote = error.errorDescription

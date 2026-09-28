@@ -5,6 +5,11 @@ import SwiftUI
 /// feedback, and everything else — the pasted-token fallback, reopening the page —
 /// behind a quiet "Trouble?" disclosure (ADHD rules, `vibehub-qa-fix.md`). Controls only,
 /// no heading: each host (the first-run window, the popover, Settings) says it once.
+///
+/// The pairing itself runs on `TrackerManager` (`startBrowserPairing`), not here: opening
+/// the approval page brings the browser forward, which closes a menu-bar window and this
+/// view with it. A view-owned poll died there and the approval landed on nobody. This
+/// view only renders that state and can come and go while the pairing carries on.
 struct OnboardingView: View {
     @ObservedObject var store: StatusStore
     @ObservedObject var settings: AppSettings
@@ -17,25 +22,21 @@ struct OnboardingView: View {
 
     @State private var token = ""
     @State private var isVerifying = false
-    @State private var isPairing = false
-    @State private var pairingCode: String?
-    @State private var verificationURL: URL?
     @State private var errorMessage: String?
     @State private var showTrouble = false
-    @State private var pollTask: Task<Void, Never>?
 
     var body: some View {
         VStack(alignment: alignment, spacing: 10) {
-            if isPairing {
-                pairingStatus
+            if let pairing = tracker.pairing {
+                pairingStatus(pairing)
             } else {
-                Button("Connect", action: startBrowserPairing)
+                Button("Connect") { tracker.startBrowserPairing() }
                     .buttonStyle(PrimaryButtonStyle(large: large))
                     .keyboardShortcut(.defaultAction)
             }
 
-            if let errorMessage {
-                Label(errorMessage, systemImage: "exclamationmark.circle")
+            if let message = errorMessage ?? tracker.pairingError {
+                Label(message, systemImage: "exclamationmark.circle")
                     .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(.primary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -43,30 +44,33 @@ struct OnboardingView: View {
 
             trouble
         }
-        .onDisappear {
-            pollTask?.cancel()
-            pollTask = nil
+        // The pairing ended while this view was on screen: connected (no error, a token
+        // now saved) means the host moves on. A cancel or a failure changes nothing here.
+        .onChange(of: tracker.pairing) { pairing in
+            guard pairing == nil, tracker.pairingError == nil, store.token != nil else { return }
+            onSaved?(false)
         }
     }
 
-    private var pairingStatus: some View {
+    private func pairingStatus(_ pairing: TrackerManager.PairingState) -> some View {
         VStack(alignment: alignment, spacing: 6) {
             HStack(spacing: 8) {
                 ProgressView().controlSize(.small)
-                Text("Waiting for your browser\u{2026}")
+                Text(pairing.phase == .connecting ? "Connecting\u{2026}" : "Waiting for your browser\u{2026}")
                     .font(.system(size: 12, weight: .medium))
             }
-            if let pairingCode {
+            if let code = pairing.code {
                 // The code to match on the browser page — the one detail worth reading.
-                Text(pairingCode)
+                Text(code)
                     .font(.system(size: 15, weight: .semibold, design: .monospaced))
                     .tracking(1.5)
                     .textSelection(.enabled)
             }
-            Button("Cancel", action: cancelPairing)
+            Button("Cancel") { tracker.cancelPairing() }
                 .buttonStyle(.link)
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
+                .disabled(pairing.phase == .connecting)
         }
     }
 
@@ -75,7 +79,7 @@ struct OnboardingView: View {
     private var trouble: some View {
         if showTrouble {
             VStack(alignment: alignment, spacing: 8) {
-                if let verificationURL, isPairing {
+                if let verificationURL = tracker.pairing?.verificationURL {
                     Button("Open the page again") { NSWorkspace.shared.open(verificationURL) }
                         .buttonStyle(.link)
                         .font(.system(size: 11))
@@ -102,74 +106,6 @@ struct OnboardingView: View {
         }
     }
 
-    private func startBrowserPairing() {
-        isPairing = true
-        errorMessage = nil
-        let client = APIClient(baseURL: settings.baseURL)
-        let deviceName = Host.current().localizedName ?? "Mac"
-
-        pollTask = Task { @MainActor in
-            let requestResult = await client.pairRequest(deviceName: deviceName, os: "mac")
-            guard !Task.isCancelled else { return }
-
-            switch requestResult {
-            case .failure(let error):
-                isPairing = false
-                errorMessage = error.errorDescription
-                return
-            case .success(let pair):
-                pairingCode = pair.userCode
-                if let url = URL(string: pair.verificationUri) {
-                    verificationURL = url
-                    NSWorkspace.shared.open(url)
-                }
-
-                // Poll every `interval` seconds until approved, expired or cancelled.
-                let deadline = Date().addingTimeInterval(Double(pair.expiresIn))
-                while !Task.isCancelled && Date() < deadline {
-                    try? await Task.sleep(nanoseconds: UInt64(max(1, pair.interval)) * 1_000_000_000)
-                    guard !Task.isCancelled else { return }
-
-                    let pollResult = await client.pairPoll(deviceCode: pair.deviceCode)
-                    guard !Task.isCancelled else { return }
-
-                    if case .success(let poll) = pollResult {
-                        if poll.status == "approved", let token = poll.token {
-                            let connectResult = await tracker.connect(token: token)
-                            if case .success = connectResult {
-                                isPairing = false
-                                store.wake()
-                                onSaved?(false)
-                                return
-                            } else if case .failure(let error) = connectResult {
-                                isPairing = false
-                                errorMessage = error.errorDescription
-                                return
-                            }
-                        } else if poll.status == "expired" {
-                            isPairing = false
-                            errorMessage = "That request expired. Try again."
-                            return
-                        }
-                    }
-                }
-
-                if !Task.isCancelled {
-                    isPairing = false
-                    errorMessage = "No answer from the browser. Try again."
-                }
-            }
-        }
-    }
-
-    private func cancelPairing() {
-        pollTask?.cancel()
-        pollTask = nil
-        isPairing = false
-        pairingCode = nil
-        verificationURL = nil
-    }
-
     private func verify(viaKeyboard: Bool) {
         let trimmed = token.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
@@ -181,7 +117,7 @@ struct OnboardingView: View {
             switch result {
             case .success:
                 token = ""
-                cancelPairing()
+                tracker.cancelPairing()
                 store.wake()
                 onSaved?(viaKeyboard)
             case .failure(let error):
