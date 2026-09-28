@@ -11,7 +11,7 @@ import { asyncHandler, HttpError } from "../lib/http-error";
 import { fromPayloadValue } from "../lib/json-field";
 import { computeLevel, computeLevels } from "../lib/level";
 import { detectIcon, detectLabel } from "../lib/links";
-import { localDay, localDayWindow, openSessionToday } from "../lib/local-day";
+import { localDay, localDayFloor, localDayWindow, openSessionToday } from "../lib/local-day";
 import { normalizeModel, presenceFor } from "../lib/sessions";
 import {
   createTrackerTokenSchema,
@@ -462,10 +462,10 @@ router.get(
       return existing;
     };
 
-    // (1) Folded totals. The row's UTC day is only a floor for lastSeenAt — events and
-    // sessions below refine it to the actual last report time.
+    // (1) Folded totals. The start of the row's local day is only a floor for lastSeenAt —
+    // events and sessions below refine it to the actual last report time.
     for (const row of dailyStats) {
-      const source = seen(row.tool, normalizeModel(row.model), row.date);
+      const source = seen(row.tool, normalizeModel(row.model), localDayFloor(row.date, tz, now));
       const tokensTotal = row.tokensInput + row.tokensOutput;
       source.tokens7d += tokensTotal;
       if (row.date.getTime() === today.getTime()) {

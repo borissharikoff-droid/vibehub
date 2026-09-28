@@ -35,6 +35,16 @@ export function localDayWindow(day: Date, tzOffsetMinutes: number | null | undef
 }
 
 /**
+ * The latest instant a DailyStat row can vouch for as "seen": the start of its local
+ * day, never past `now`. The key itself is not an instant - east of UTC it lies hours
+ * after that day began (UTC+3: 03:00 local, so from 00:00 to 03:00 it is in the future)
+ * and used as "last seen" a source idle since 01:00 read "just now" (QA 2026-09-29).
+ */
+export function localDayFloor(day: Date, tzOffsetMinutes: number | null | undefined, now: Date): Date {
+  return new Date(Math.min(localDayWindow(day, tzOffsetMinutes).start, now.getTime()));
+}
+
+/**
  * A session's active seconds split at LOCAL midnights, oldest day first - what
  * closeSession books into DailyStat. Bounded: past `maxDays` the remainder lands on the
  * last day.

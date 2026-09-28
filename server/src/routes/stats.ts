@@ -2,7 +2,7 @@ import type { User } from "@prisma/client";
 import { Router } from "express";
 import { prisma } from "../db";
 import { asyncHandler, HttpError } from "../lib/http-error";
-import { localDayWindow } from "../lib/local-day";
+import { localDayFloor, localDayWindow } from "../lib/local-day";
 import { LEGACY_UNKNOWN_MODEL, normalizeModel, userToday } from "../lib/sessions";
 import { isTokenlessTool } from "../lib/schemas";
 import { foldByTool, topToolOf } from "../lib/stats-tools";
@@ -123,14 +123,15 @@ export async function computeStats(user: User, rangeDays: number | null) {
   // than surface as a model of their own. Shape is unchanged — byModel keeps the
   // "unknown" literal, which the web maps to "no model".
   for (const row of dailyStats) {
-    // `row.date` is that day's UTC midnight — the finest "when" a rollup row has.
+    // A rollup row knows only its local day; that day's start is the finest "when" it has
+    // (`row.date` is a key, and east of UTC it lies after the day began).
     add(
       normalizeModel(row.model) ?? LEGACY_UNKNOWN_MODEL,
       row.tool,
       row.tokensInput,
       row.tokensOutput,
       row.activeSeconds,
-      row.date,
+      localDayFloor(row.date, tzOffsetMinutes, now),
       { read: row.tokensCacheRead, write: row.tokensCacheWrite }
     );
   }

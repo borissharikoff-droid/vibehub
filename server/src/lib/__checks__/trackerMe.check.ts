@@ -6,6 +6,7 @@
 // every null here is load-bearing. lib/tracker-me.ts is Prisma-free precisely so this
 // file can run without a database or a server.
 
+import { localDayFloor } from "../local-day";
 import type { PresenceSnapshot } from "../sessions";
 import { buildTrackerMePayload, foldToday, FRIENDS_SAMPLE_LIMIT, type TrackerMeInput } from "../tracker-me";
 
@@ -457,6 +458,20 @@ eq("a tokenless day has no cached count either",
   foldToday([], [session(at(10 * H), at(11 * H), 0, 0, null, "quadcode")], today).cachedTokens, null);
 eq("cache writes above input make the fold unavailable",
   foldToday([{ ...stat(today, 0, 10, 0), tokensCacheWrite: 11 }], [], today).estimatedUsd, null);
+
+// ---- a DailyStat key is a date, not a "last seen" instant (QA 2026-09-29) ----
+// UTC+3 at 01:30 local (22:30Z the day before): today's key is 00:00Z, still in the future.
+const earlyMorning = at(-1.5 * H);
+eq("east of UTC: a row is seen from its local midnight, not from its key",
+  localDayFloor(today, 180, at(20 * H)).toISOString(), at(-3 * H).toISOString());
+eq("before the key's UTC midnight the floor is never in the future",
+  localDayFloor(today, 180, earlyMorning).getTime() <= earlyMorning.getTime(), true);
+eq("west of UTC: the local day starts after its key",
+  localDayFloor(today, -300, at(20 * H)).toISOString(), at(5 * H).toISOString());
+eq("unknown zone reads as UTC: the key itself",
+  localDayFloor(today, null, at(20 * H)).toISOString(), today.toISOString());
+eq("a zone change never pushes the floor past now",
+  localDayFloor(today, -300, at(2 * H)).toISOString(), at(2 * H).toISOString());
 
 // ---- summary ----
 console.log(`\n${passed} passed, ${failures.length} failed`);
