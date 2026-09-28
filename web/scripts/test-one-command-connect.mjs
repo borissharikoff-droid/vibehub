@@ -134,12 +134,19 @@ const sockets = new Set();
 const fixtureServer = http.createServer((req, res) => {
   try {
     assert(scenario && (req.socket.remoteAddress === '127.0.0.1' || req.socket.remoteAddress === '::ffff:127.0.0.1'), 'ISOLATION: non-loopback peer');
-    const kind = req.url.startsWith('/dist/') ? 'node' : req.url === '/tracker/vibehub-tracker.cjs' ? 'bundle' : req.url === '/api/v1/tracker/verify' ? 'verify' : 'unknown';
+    // The connectors are tokenless since round 21: with no VIBEHUB_TOKEN they ask the
+    // server for a pairing code and poll for the browser's approval. The fixture answers
+    // with a synthetic session and an immediate "expired", so that path ends in one poll.
+    const kind = req.url.startsWith('/dist/') ? 'node' : req.url === '/tracker/vibehub-tracker.cjs' ? 'bundle' : req.url === '/api/v1/tracker/verify' ? 'verify'
+      : req.url === '/api/v1/tracker/pair/request' ? 'pair-request' : req.url === '/api/v1/tracker/pair/poll' ? 'pair-poll' : 'unknown';
     scenario.requests.push({ url: req.url, kind, authorization: req.headers.authorization || null });
     assert(kind !== 'unknown', 'ISOLATION: unexpected route');
     if (kind === 'verify') assert.equal(req.headers.authorization, 'Bearer ' + fakeToken);
     else assert(!req.headers.authorization, 'ISOLATION: token sent to a public/runtime download');
-    let body = kind === 'node' ? scenario.archives[path.posix.basename(req.url)] : kind === 'bundle' ? Buffer.from(trackerSource) : Buffer.from('{"username":"synthetic"}');
+    let body = kind === 'node' ? scenario.archives[path.posix.basename(req.url)] : kind === 'bundle' ? Buffer.from(trackerSource)
+      : kind === 'pair-request' ? Buffer.from(JSON.stringify({ deviceCode: 'synthetic-device-code', userCode: 'VIBE-TEST', verificationUri: origin + '/pair?code=VIBE-TEST', expiresIn: 600, interval: 1 }))
+      : kind === 'pair-poll' ? Buffer.from('{"status":"expired"}')
+      : Buffer.from('{"username":"synthetic"}');
     assert(body, 'ISOLATION: no fixture for requested runtime');
     const issue = scenario.options.target === kind ? scenario.options.issue : null;
     if (issue === 'timeout') return; // Deliberately stalled; script-copy deadline is one second.
@@ -152,7 +159,7 @@ const fixtureServer = http.createServer((req, res) => {
     if (issue === 'oversize') { res.writeHead(200, { 'Content-Length': 999999999 }); res.end('oversize'); return; }
     if (issue === 'chunked-oversize') { res.writeHead(200, { 'Transfer-Encoding': 'chunked' }); res.end(Buffer.alloc(kind === 'verify' ? 17000 : 8388609, 120)); return; }
     if (issue === 'truncate') { res.writeHead(200, { 'Content-Length': body.length + 500 }); res.end(body.subarray(0, Math.min(body.length, 30))); return; }
-    res.writeHead(200, { 'Content-Length': body.length, 'Content-Type': kind === 'verify' ? 'application/json' : 'application/octet-stream' });
+    res.writeHead(200, { 'Content-Length': body.length, 'Content-Type': ['verify', 'pair-request', 'pair-poll'].includes(kind) ? 'application/json' : 'application/octet-stream' });
     res.end(body);
   } catch (error) { if (scenario) scenario.serverError = error; res.writeHead(500); res.end('fixture assertion failed'); }
 });
@@ -207,7 +214,9 @@ let tools = {};
 async function prepareBash() {
   if (!bash || !fs.existsSync(bash)) { results.skips.push('Bash unavailable; no POSIX execution.'); return false; }
   const env = homeEnv('bash-probe');
-  const names = ['basename', 'dirname', 'cat', 'chmod', 'mkdir', 'mv', 'rm', 'rmdir', 'mktemp', 'wc', 'tr', 'grep', 'tar', 'gzip', 'curl', 'sha256sum', 'shasum', 'uname'];
+  // `sed` and `sleep` are what the tokenless pairing path reads the server's JSON with
+  // and paces its polling by (connect.sh, "Pairing this device with VibeHub").
+  const names = ['basename', 'dirname', 'cat', 'chmod', 'mkdir', 'mv', 'rm', 'rmdir', 'mktemp', 'wc', 'tr', 'grep', 'sed', 'sleep', 'tar', 'gzip', 'curl', 'sha256sum', 'shasum', 'uname'];
   const found = await run(bash, ['--noprofile', '--norc', '-c', 'for t in ' + names.join(' ') + '; do location="$(command -v "$t" || true)"; printf "%s=%s\\n" "$t" "$location"; done'], { ...env, PATH: '/usr/bin:/bin:/usr/sbin:/sbin' });
   equal(found.code, 0, 'Bash tool discovery');
   tools = Object.fromEntries(found.stdout.trim().split(/\r?\n/).map((line) => line.split('=')));
@@ -441,8 +450,20 @@ async function cases(kind) {
       if (sampleDir && kind === 'posix' && mode === 'status-rejected') fs.writeFileSync(path.join(sampleDir, 'connect-poststart-failure-sample.txt'), 'exit code: ' + r.code + '\n\n' + r.text);
     }
   });
+  // No token is not invalid input any more — it is the browser-pairing path. It must
+  // still fail closed: no tracker command before a token exists, and a clear stop when
+  // the code expires (the fixture expires it on the first poll).
+  await test(prefix + 'missing token starts browser pairing and fails closed on expiry', async () => {
+    const f = fixture(kind, { token: '' }); const r = await f.invoke(); noSuccess(r);
+    equal(r.verbs, [], 'No tracker command before a token exists');
+    const kinds = f.requests.map((request) => request.kind);
+    check(kinds[0] === 'pair-request' && kinds.length >= 2 && kinds.slice(1).every((k) => k === 'pair-poll'),
+      'One pairing request, then polls until the expired answer, nothing else: ' + JSON.stringify(kinds) + '\n' + r.text);
+    check(r.text.includes('VIBE-TEST'), 'Shows the code to match in the browser\n' + r.text);
+    check(/expired/i.test(r.text), 'Says why it stopped\n' + r.text);
+  });
   for (const [name, options] of [
-    ['missing token', { token: '' }], ['malformed token', { token: 'bad token\nsecret' }], ['unknown option', { unknown: true }],
+    ['malformed token', { token: 'bad token\nsecret' }], ['unknown option', { unknown: true }],
     ['terminal-newline token rejected', { token: fakeToken + '\n' }],
     ['terminal-newline origin rejected', { origin: 'https://example.invalid\n' }],
     ['occupied install lock', { lock: true }],
